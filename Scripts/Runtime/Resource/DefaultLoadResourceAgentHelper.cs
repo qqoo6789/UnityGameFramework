@@ -34,7 +34,8 @@ namespace UnityGameFramework.Runtime
 #else
         private WWW m_WWW = null;
 #endif
-        private AssetBundleCreateRequest m_FileAssetBundleCreateRequest = null;
+        private UnityWebRequest m_FileAssetBundleCreateWebRequest;
+        private AsyncOperation m_FileAssetBundleCreateRequest = null;
         private AssetBundleCreateRequest m_BytesAssetBundleCreateRequest = null;
         private AssetBundleRequest m_AssetBundleRequest = null;
         private AsyncOperation m_AsyncOperation = null;
@@ -149,7 +150,16 @@ namespace UnityGameFramework.Runtime
             }
 
             m_FileFullPath = fullPath;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+
+            m_FileAssetBundleCreateWebRequest = UnityWebRequestAssetBundle.GetAssetBundle(fullPath);
+            m_FileAssetBundleCreateRequest = m_FileAssetBundleCreateWebRequest.SendWebRequest();
+#else
             m_FileAssetBundleCreateRequest = AssetBundle.LoadFromFileAsync(fullPath);
+
+#endif
+            // unityWebRequestAsyncOperation.progress
         }
 
         /// <summary>
@@ -159,7 +169,7 @@ namespace UnityGameFramework.Runtime
         /// <param name="name">要加载资源的名称。</param>
         public override void ReadFile(IFileSystem fileSystem, string name)
         {
-#if UNITY_5_3_5 || UNITY_5_3_6 || UNITY_5_3_7 || UNITY_5_3_8 || UNITY_5_4_OR_NEWER
+            // #if UNITY_5_3_5 || UNITY_5_3_6 || UNITY_5_3_7 || UNITY_5_3_8 || UNITY_5_4_OR_NEWER
             if (m_LoadResourceAgentHelperReadFileCompleteEventHandler == null || m_LoadResourceAgentHelperUpdateEventHandler == null || m_LoadResourceAgentHelperErrorEventHandler == null)
             {
                 Log.Fatal("Load resource agent helper handler is invalid.");
@@ -169,10 +179,18 @@ namespace UnityGameFramework.Runtime
             FileInfo fileInfo = fileSystem.GetFileInfo(name);
             m_FileFullPath = fileSystem.FullPath;
             m_FileName = name;
-            m_FileAssetBundleCreateRequest = AssetBundle.LoadFromFileAsync(fileSystem.FullPath, 0u, (ulong)fileInfo.Offset);
+#if UNITY_WEBGL && !UNITY_EDITOR
+                UnityWebRequest request = UnityWebRequestAssetBundle.GetAssetBundle(fileSystem.FullPath);
+                m_FileAssetBundleCreateRequest = request.SendWebRequest();
 #else
-            Log.Fatal("Load from file async with offset is not supported, use Unity 5.3.5f1 or above.");
+            m_FileAssetBundleCreateRequest = AssetBundle.LoadFromFileAsync(fileSystem.FullPath, 0u, (ulong)fileInfo.Offset);
+
 #endif
+
+
+            // #else
+            //             Log.Fatal("Load from file async with offset is not supported, use Unity 5.3.5f1 or above.");
+            // #endif
         }
 
         /// <summary>
@@ -321,6 +339,7 @@ namespace UnityGameFramework.Runtime
 #endif
 
             m_FileAssetBundleCreateRequest = null;
+            m_FileAssetBundleCreateWebRequest = null;
             m_BytesAssetBundleCreateRequest = null;
             m_AssetBundleRequest = null;
             m_AsyncOperation = null;
@@ -461,10 +480,17 @@ namespace UnityGameFramework.Runtime
             {
                 if (m_FileAssetBundleCreateRequest.isDone)
                 {
-                    AssetBundle assetBundle = m_FileAssetBundleCreateRequest.assetBundle;
+                    AssetBundle assetBundle;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    
+                    assetBundle = DownloadHandlerAssetBundle.GetContent(m_FileAssetBundleCreateWebRequest);
+#else
+                    assetBundle = (m_FileAssetBundleCreateRequest as AssetBundleCreateRequest).assetBundle;
+#endif
+
                     if (assetBundle != null)
                     {
-                        AssetBundleCreateRequest oldFileAssetBundleCreateRequest = m_FileAssetBundleCreateRequest;
+                        AsyncOperation oldFileAssetBundleCreateRequest = m_FileAssetBundleCreateRequest;
                         LoadResourceAgentHelperReadFileCompleteEventArgs loadResourceAgentHelperReadFileCompleteEventArgs = LoadResourceAgentHelperReadFileCompleteEventArgs.Create(assetBundle);
                         m_LoadResourceAgentHelperReadFileCompleteEventHandler(this, loadResourceAgentHelperReadFileCompleteEventArgs);
                         ReferencePool.Release(loadResourceAgentHelperReadFileCompleteEventArgs);
